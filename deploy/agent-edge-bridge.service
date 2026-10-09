@@ -1,0 +1,22 @@
+[Unit]
+Description=agent-edge-bridge: key-authenticated browser relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arduino
+# Published binary location after `dotnet publish -c Release -o publish`.
+ExecStart=/home/arduino/agent-edge-bridge/publish/agent-edge-bridge
+# API key file: one line, AGENT_EDGE_BRIDGE_API_KEY=<key>, mode 600.
+EnvironmentFile=/etc/agent-edge-bridge/api-key
+# Real browser profiles (e.g. Edge's) encrypt cookies against the login
+# keyring. The bridge needs the session bus to reach it. Requires the
+# arduino user to be logged in (GNOME session); the bus path is per-UID.
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+# Localhost only. Expose via a tunnel, never 0.0.0.0.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
