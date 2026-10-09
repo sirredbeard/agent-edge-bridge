@@ -1,6 +1,6 @@
 # agent-edge-bridge
 
-A key-authenticated HTTP relay that drives a real browser on a small ARM64 box. The browser egresses via the local network, so a remote client gets programmatic browsing with full JavaScript from a residential IP.
+A key-authenticated web relay that drives a real browser on an Arm box using [Muse Gadget SDK](https://github.com/facebookincubator/muse-gadget-sdk). The browser egresses via the local network, so a remote client gets programmatic browsing with full JavaScript from a residential IP.
 
 ## Why
 
@@ -8,19 +8,17 @@ Datacenter IP ranges get flagged by bot defenses on retail sites. This box sits 
 
 ## How it works
 
-A .NET 11 minimal API, published self-contained for linux-arm64. It drives the browser through Playwright for .NET (1.63.0). One session at a time, browser torn down on delete.
-
-Playwright was picked over a hand-rolled CDP client for three reasons: its selectors auto-wait (no polling loops), its API covers the whole relay surface without protocol plumbing, and Microsoft ships it monthly. The first build used raw CDP to chase a Native AOT single binary. AOT turned out to be a nice-to-have, and Playwright's driver model needs runtime reflection, so the AOT requirement was dropped.
+A .NET 11 minimal API, published self-contained for linux-arm64. It drives the browser through Playwright for .NET. One session at a time, browser torn down on delete.
 
 ## Browser
 
-Playwright's native ARM64 Chromium (Chrome for Testing 153.0.8010.12, in `~/.cache/ms-playwright`). No system browser needed. Headless unless you ask otherwise. `browserPath` can point at another Chromium-based binary, but the bundled build is the tested path.
+Playwright's native Arm Chromium (Chrome for Testing 153.0.8010.12, in `~/.cache/ms-playwright`). No system browser needed. Headless unless you ask otherwise. `browserPath` can point at another Chromium-based binary, but the bundled build is the tested path.
 
-For authenticated sessions, pass `userDataDir` pointing at a real browser profile. Edge profiles work directly: copy `~/.config/microsoft-edge` (the whole directory, not just `Default`) somewhere and hand the copy to the relay. The bridge uses the login keyring instead of Playwright's mock keychain on this path, so the profile's cookies decrypt. The service needs `DBUS_SESSION_BUS_ADDRESS` pointed at an unlocked login session for that (set in the systemd unit). Copy, don't use the live profile: two writers will corrupt it.
+Edge profiles work directly: copy `~/.config/microsoft-edge` (the whole directory, not just `Default`) somewhere and hand the copy to the relay. The bridge uses the login keyring instead of Playwright's mock keychain on this path, so the profile's cookies decrypt. The service needs `DBUS_SESSION_BUS_ADDRESS` pointed at an unlocked login session for that (set in the systemd unit).
 
 ## Requirements
 
-- .NET 11 SDK (11.0.100-rc.1 or later)
+- .NET 11 SDK
 - linux-arm64
 - A browser: Microsoft Edge installed (preferred), or Playwright's Chromium via the one-time fetch below
 
