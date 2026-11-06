@@ -1,0 +1,13 @@
+# .NET
+bin/
+obj/
+publish/
+*.user
+.vs/
+
+# API key: never commit this.
+.api-key
+
+# OS
+.DS_Store
+Thumbs.db

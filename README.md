@@ -1,0 +1,131 @@
+# agent-edge-bridge
+
+A key-authenticated web relay that drives a real browser on an Arm box using [Muse Gadget SDK](https://github.com/facebookincubator/muse-gadget-sdk). The browser egresses via the local network, so a remote client gets programmatic browsing with full JavaScript from a residential IP.
+
+## Why
+
+Datacenter IP ranges get flagged by bot defenses on retail sites. This box sits on a home connection. Run the relay on it and automated browsing comes from a residential IP, in a real browser, with the JavaScript actually running. That combination clears challenges that headless datacenter scraping does not.
+
+## How it works
+
+A .NET 11 minimal API, published self-contained for linux-arm64. It drives the browser through Playwright for .NET. One session at a time, browser torn down on delete.
+
+## Browser
+
+Playwright's native Arm Chromium (Chrome for Testing 153.0.8010.12, in `~/.cache/ms-playwright`). No system browser needed. Headless unless you ask otherwise. `browserPath` can point at another Chromium-based binary, but the bundled build is the tested path.
+
+Edge profiles work directly: copy `~/.config/microsoft-edge` (the whole directory, not just `Default`) somewhere and hand the copy to the relay. The bridge uses the login keyring instead of Playwright's mock keychain on this path, so the profile's cookies decrypt. The service needs `DBUS_SESSION_BUS_ADDRESS` pointed at an unlocked login session for that (set in the systemd unit).
+
+## Requirements
+
+- .NET 11 SDK
+- linux-arm64
+- A browser: Microsoft Edge installed (preferred), or Playwright's Chromium via the one-time fetch below
+
+## Build
+
+```
+dotnet publish -c Release -o publish
+```
+
+Output is `publish/agent-edge-bridge` plus its runtime files. Self-contained, no .NET runtime needed on the box.
+
+Only needed for the fallback Chromium. The .NET Playwright package has no standalone CLI on Linux, so fetch the browser with a throwaway console project:
+
+```
+mkdir /tmp/pwinstall && cd /tmp/pwinstall
+# csproj referencing Microsoft.Playwright, Program.cs with:
+# return Microsoft.Playwright.Program.Main(new[] { "install", "chromium" });
+dotnet run
+```
+
+## Run
+
+Generate a key once and stash it where the service can read it:
+
+```
+head -c 32 /dev/urandom | base64 | tr -d '\n+/=' | head -c 48 > .api-key
+chmod 600 .api-key
+```
+
+Then:
+
+```
+export AGENT_EDGE_BRIDGE_API_KEY=$(cat .api-key)
+./publish/agent-edge-bridge
+```
+
+Listens on `http://127.0.0.1:8899`. Bind is localhost only by design, expose it via a tunnel, not by listening on `0.0.0.0`. Every endpoint except `/health` requires the `X-Api-Key` header, 401 otherwise.
+
+## API
+
+```
+GET  /health                      no auth, {"ok":true}
+POST /sessions                    {browserPath?, userDataDir?, headless?, profile?, cdpEndpoint?} -> {sessionId}, 409 if one is already active
+POST /sessions/{id}/goto          {url} -> {ok, title, url}
+POST /sessions/{id}/fill          {selector, text}
+POST /sessions/{id}/click         {selector}
+POST /sessions/{id}/press         {selector, key}       e.g. "Enter"
+POST /sessions/{id}/wait          {selector?, timeoutMs?}  504 on timeout
+GET  /sessions/{id}/html          rendered HTML of the current page
+GET  /sessions/{id}/screenshot    PNG bytes
+GET  /sessions/{id}/cookies       {"cookies": [...]}
+POST /sessions/{id}/storage/save  {name}                persist cookies/storage under a profile name
+DELETE /sessions/{id}             kills the browser, frees the slot
+```
+
+Two ways to keep a login. Pass `userDataDir` and the browser profile itself persists on disk. Or start with `profile: "amazon"` to load a saved storage state, and hit `/storage/save` when you want to snapshot the current one. Warm session cookies are the single best anti-bot measure there is.
+
+## Attach mode
+
+A session can attach to a browser you already run instead of launching one:
+
+```
+microsoft-edge-stable --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/path/to/profile
+```
+
+Create the session with `{"cdpEndpoint": "http://127.0.0.1:9222"}`. The bridge opens its own tab in that browser's default context, so it drives your real profile: your logins, your cookies, your browser build. The launch options (browserPath, userDataDir, headless, profile) do not apply in this mode. Deleting the session closes only the bridge's tab and drops the connection. Your browser keeps running.
+
+Warm cookies help, but some sites fingerprint the browser itself and wall off anything Playwright launches. A browser you started by hand is not launched by Playwright, and it reads as what it is.
+
+The debug port gives full control of the browser to anything that can reach it. Bind it to 127.0.0.1 only, and only attach the bridge to endpoints on this machine.
+
+Quick smoke test:
+
+```
+KEY=$(cat .api-key)
+SID=$(curl -s -X POST localhost:8899/sessions -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d '{}' | python3 -c "import json,sys; print(json.load(sys.stdin)['sessionId'])")
+curl -s -X POST localhost:8899/sessions/$SID/goto -H "X-Api-Key: $KEY" -H 'Content-Type: application/json' -d '{"url":"https://example.com"}'
+curl -s -X DELETE localhost:8899/sessions/$SID -H "X-Api-Key: $KEY"
+```
+
+
+## Install as a service
+
+```
+sudo cp deploy/agent-edge-bridge.service /etc/systemd/system/
+sudo mkdir -p /etc/agent-edge-bridge
+printf 'AGENT_EDGE_BRIDGE_API_KEY=%s\n' "$(cat .api-key)" | sudo tee /etc/agent-edge-bridge/api-key > /dev/null
+sudo chmod 600 /etc/agent-edge-bridge/api-key
+sudo systemctl daemon-reload
+sudo systemctl enable --now agent-edge-bridge
+```
+
+Check it:
+
+```
+systemctl status agent-edge-bridge
+curl -s localhost:8899/health
+```
+
+The unit expects the published binary at `/home/arduino/agent-edge-bridge/publish/agent-edge-bridge` and the key at `/etc/agent-edge-bridge/api-key`. If yours live elsewhere, edit the unit, `daemon-reload`, restart.
+
+## Notes
+
+- The browser launches with `--disable-blink-features=AutomationControlled` and a current Chrome user agent string. It is still automation, just polite automation.
+- If you tunnel this, put Cloudflare Access (service token, not the interactive login) in front of it. An open relay is an open proxy.
+- `AGENTS.md` is the operating manual for AI agents working in this repo. Technical details live in `.github/copilot-instructions.md`.
+
+## License
+
+[MIT](LICENSE).

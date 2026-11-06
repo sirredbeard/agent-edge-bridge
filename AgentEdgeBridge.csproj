@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Self-contained single publish, no AOT: Playwright's driver model
+         needs reflection at runtime. -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>linux-arm64</RuntimeIdentifier>
+    <AssemblyName>agent-edge-bridge</AssemblyName>
+    <RootNamespace>AgentEdgeBridge</RootNamespace>
+    <!-- Ship only the linux-arm64 Playwright driver + Node runtime. -->
+    <PlaywrightPlatform>linux-arm64</PlaywrightPlatform>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />
+  </ItemGroup>
+
+</Project>
