@@ -61,6 +61,7 @@ Listens on `http://127.0.0.1:8899`. Bind is localhost only by design, expose it 
 
 ```
 GET  /health                      no auth, {"ok":true}
+GET  /adb                         WebSocket upgrade; raw ADB stream to the Android container (see below)
 POST /sessions                    {browserPath?, userDataDir?, headless?, profile?, cdpEndpoint?} -> {sessionId}, 409 if one is already active
 POST /sessions/{id}/goto          {url} -> {ok, title, url}
 POST /sessions/{id}/fill          {selector, text}
@@ -89,6 +90,19 @@ Create the session with `{"cdpEndpoint": "http://127.0.0.1:9222"}`. The bridge o
 Warm cookies help, but some sites fingerprint the browser itself and wall off anything Playwright launches. A browser you started by hand is not launched by Playwright, and it reads as what it is.
 
 The debug port gives full control of the browser to anything that can reach it. Bind it to 127.0.0.1 only, and only attach the bridge to endpoints on this machine.
+
+## Android ADB relay
+
+`GET /adb` is a WebSocket that relays the Android container's ADB stream. The bridge resolves the container's address at connect time (an `AGENT_EDGE_BRIDGE_ADB_ADDRESS` environment variable in `host:port` form wins; otherwise it reads the address from the container runtime's dnsmasq lease file) and pipes bytes both ways, unchanged. ADB frames its own protocol, so the socket needs no message format of its own.
+
+The point is reach: the bridge is already exposed through the tunnel, so the container is reachable when nobody is on the local network. Client side, bridge the socket to a local TCP port and point `adb` at it:
+
+```
+websocat --binary --header "X-Api-Key: $KEY" wss://<bridge-host>/adb tcp-listen:15555
+adb connect 127.0.0.1:15555
+```
+
+Any WebSocket-to-TCP forwarder works in place of websocat. The relay holds one stream per socket; open one socket per `adb` connection.
 
 Quick smoke test:
 

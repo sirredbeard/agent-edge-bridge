@@ -89,6 +89,14 @@ POST /sessions/{id}/storage/save
 
 DELETE /sessions/{id}
   -> closes the browser context, 200 {"ok": true} | 404
+
+GET  /adb  (WebSocket upgrade)
+  -> raw byte relay to the Android container's adbd, for reaching the
+     container through the tunnel when nobody is on the local network.
+     Address resolved at connect time: the AGENT_EDGE_BRIDGE_ADB_ADDRESS
+     env var (host:port) wins, else the newest entry in the container
+     runtime's dnsmasq lease file. 400 when the request is not a
+     WebSocket upgrade, 503 when no ADB address can be resolved.
 ```
 
 Error shape on failures is the ASP.NET Core problem response (`Results.Problem`), status 502 for browser errors, 504 for wait timeouts.
